@@ -33,6 +33,25 @@ mnk_mode = true
 mnk_mouse = true
 mnk_sensitivity = 1.0
 
+# Direct mouse look (src/mouse/). Raw mouse motion goes straight into the
+# game's camera - 1:1, no stick deadzone / response curve / acceleration. It
+# only takes over while the game's view-rotation code is running (on foot);
+# everywhere else (vehicles, menus) the stick emulation above stays in charge,
+# so keep mnk_mouse = true. If the camera ignores the hook the module notices
+# within a few seconds and falls back to the stick by itself.
+ao2_mouse_direct_look = true
+# Camera radians per mouse pixel (0.0022 = one full turn per ~2850 px).
+ao2_mouse_look_sensitivity = 0.0022
+ao2_mouse_look_invert_x = false
+ao2_mouse_look_invert_y = false
+# Scale sensitivity with the camera FOV so zoomed aiming (precision, sniping)
+# turns by the same screen distance per pixel. ref_fov = horizontal FOV in
+# degrees at which sensitivity is unscaled, 0 = the widest FOV seen.
+ao2_mouse_look_zoom_scaling = true
+ao2_mouse_look_zoom_ref_fov = 0.0
+# Hook diagnostics (also needs log_level = "info" in hardware.toml).
+ao2_mouse_look_log = true
+
 # ─────────────────────────────────────────────────────────────
 # Keyboard bindings (default values)
 # ─────────────────────────────────────────────────────────────

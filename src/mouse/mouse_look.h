@@ -1,52 +1,64 @@
-// mouse_look.h - optional direct mouse-to-camera path, bypassing the
+// mouse_look.h - raw mouse motion for a direct camera hook, bypassing the
 // emulated right stick.
 //
 // The keyboard/mouse-to-pad driver (thirdparty/rexglue-sdk's mnk driver)
-// turns mouse motion into right-stick deflection, which then runs through
-// whatever deadzone/acceleration curve the title applies to a real stick.
-// That's fine for a controller stand-in, but it means the mouse never feels
-// like a mouse: there's a dead patch near the center and a soft response
-// everywhere else, both designed for thumbsticks.
+// turns mouse motion into right-stick deflection. That deflection then goes
+// through everything the title applies to a real thumbstick (deadzone, response
+// curve, acceleration ramp, low-pass filter), so the mouse never feels like a
+// mouse. This module is the alternative: it collects raw mouse deltas, scales
+// them to an angle and hands whole angular units to a hook sitting in the
+// title's own view-rotation code (see ao2_camera_hook.cpp), which adds them to
+// the camera directly.
 //
-// This module is for the alternative: once a title's camera-update routine
-// has been located (reverse engineering, out of scope for this file), a
-// patch can read the camera's yaw/pitch, call Resolve() with them, and write
-// the returned angles back - handing the camera raw, 1:1 mouse motion
-// instead of a fake stick signal. MouseAimLedger (mouse_aim_ledger.h) makes
-// that safe even for cameras that re-derive their yaw/pitch from an anchor
-// every frame instead of integrating a rate.
+// Self-contained on purpose, so the whole src/mouse/ folder can be copied into
+// another ReXGlue-based project: this file only talks to rex::ui::Window,
+// rex::cvar and the mnk driver's SetMouseLookActive(); it knows nothing about
+// the guest's memory layout. Per-project wiring:
+//   1. MouseLook::Get().Attach(window(), drawer) once the window exists
+//      (ArmyoftworecompApp::OnCreateDialogs);
+//   2. a camera hook that calls Consume() every frame (ao2_camera_hook.cpp).
 //
-// Self-contained by design, so the whole src/mouse/ folder can be copied
-// into another ReXGlue-based project as-is: it only talks to rex::ui::Window
-// and rex::cvar, never to this game's own generated headers. The only
-// per-project wiring needed is:
-//   1. one call to MouseLook::Get().Attach(window()) once the window exists
-//      (see ArmyoftworecompApp::OnCreateDialogs in armyoftworecomp_app.h);
-//   2. once a camera-update hook exists for the title, a call to Resolve()
-///     from inside it (see the worked example at the bottom of this file).
-//
-// Until step 2 happens for a given game, the feature is inert: the cvar
-// below does nothing, the mouse is never captured, and the mnk driver keeps
-// working exactly as before.
+// Ownership of the pointer. The mnk driver normally owns the pointer capture
+// and the mouse -> stick mapping. While a hook is calling Consume() this
+// module takes both over, in a fixed order so the two never fight:
+//   claim    SetMouseLookActive(false): mnk stops emitting stick motion and
+//            releases its capture on its next poll;
+//   engage   once mnk has let go, this module hides + locks the pointer and
+//            starts collecting deltas;
+//   release  when Consume() stops being called (menu, cutscene, vehicle - any
+//            state the hook point doesn't run in), on focus loss, when an
+//            overlay wants the mouse, or after Abandon(): the pointer is given
+//            back and SetMouseLookActive(true) hands the mouse to the stick
+//            mapping again.
+// So wherever the hook doesn't run, the mouse keeps working exactly as it did
+// before this module existed.
 #pragma once
 
 #include <rex/ui/window.h>
 #include <rex/ui/window_listener.h>
 
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <optional>
+#include <thread>
 
-#include "mouse_aim_ledger.h"
+namespace rex::ui
+{
+  class ImGuiDrawer;
+  class WindowedAppContext;
+}
 
 namespace ao2::mouse
 {
 
-  struct CameraAngles
+  // Whole angular units, in whatever unit the caller asked Consume() for.
+  struct TurnDelta
   {
-    float yaw;
-    float pitch;
+    int32_t yaw;   // + = turn right
+    int32_t pitch; // + = look up
   };
 
   class MouseLook final : public rex::ui::WindowInputListener, public rex::ui::WindowListener
@@ -57,16 +69,28 @@ namespace ao2::mouse
     MouseLook(const MouseLook &) = delete;
     MouseLook &operator=(const MouseLook &) = delete;
 
-    // Call once, after the main window has opened.
-    void Attach(rex::ui::Window *window);
+    // Call once, after the main window has opened. imgui is optional: when
+    // given, the mouse is handed back while an overlay wants it.
+    void Attach(rex::ui::Window *window, rex::ui::ImGuiDrawer *imgui = nullptr);
 
-    // Call every frame from the camera-update hook, with the yaw/pitch it is
-    // about to overwrite (read them first). dt_seconds is this frame's delta
-    // time, used only to time the idle release. Returns the angles to write
-    // back, or nullopt when the feature is off (ao2_mouse_direct_look) or the
-    // window lost focus - write nothing in that case and let the title's own
-    // update run unmodified.
-    std::optional<CameraAngles> Resolve(float current_yaw, float current_pitch, float dt_seconds);
+    // True when ao2_mouse_direct_look is on and direct look has not been
+    // abandoned. Cheap; lets a hook skip its own work when there is nothing
+    // to do.
+    bool Enabled() const;
+
+    // Call every frame from the camera hook. units_per_radian converts to the
+    // title's angle unit (65536 / 2pi for Unreal rotators); extra_scale
+    // multiplies the sensitivity (zoom compensation). Returns the turn to add
+    // to the camera this frame, or nullopt when the mouse is not (yet) owned
+    // by direct look - add nothing and let the title run unmodified. The
+    // sub-unit remainder of each frame is carried into the next, so slow
+    // motion is never rounded away.
+    std::optional<TurnDelta> Consume(double units_per_radian, double extra_scale = 1.0);
+
+    // The hook concluded that adding to the camera does not work in this
+    // build. Releases the mouse back to the stick mapping for the rest of the
+    // session.
+    void Abandon(const char *reason);
 
     // rex::ui::WindowInputListener
     void OnMouseMove(rex::ui::MouseEvent &e) override;
@@ -78,45 +102,57 @@ namespace ao2::mouse
 
   private:
     MouseLook() = default;
+    ~MouseLook();
 
-    void SetCaptureEngaged(bool engaged);
-    bool ConsumerLooksStale() const;
+    enum class Phase
+    {
+      kIdle,      // mnk owns the mouse
+      kHandoff,   // mnk told to let go, waiting for it to do so
+      kEngaging,  // capture request posted to the UI thread
+      kEngaged,   // pointer locked, deltas flowing
+      kReleasing, // release request posted to the UI thread
+    };
+
+    using Clock = std::chrono::steady_clock;
+    using UiTask = std::function<void()>;
+
+    // These expect mu_ held. They only change the phase and return the work
+    // for the UI thread (empty when there is none); the caller posts it with
+    // Post() after dropping the lock, because queueing may block and the UI
+    // thread needs mu_ to deliver mouse motion.
+    UiTask BeginReleaseLocked();
+    UiTask BeginEngageLocked();
+    TurnDelta TakeTurnLocked(double units_per_radian, double extra_scale);
+    bool OverlayWantsMouse() const;
+
+    // Call without mu_ held.
+    void Post(UiTask task);
+
+    void WatchdogLoop();
 
     rex::ui::Window *window_ = nullptr;
-    bool capture_engaged_ = false;
+    rex::ui::WindowedAppContext *ui_ = nullptr;
+    rex::ui::ImGuiDrawer *imgui_ = nullptr;
+
+    mutable std::mutex mu_;
+    Phase phase_ = Phase::kIdle;
     bool has_focus_ = true;
-    rex::ui::Window::CursorVisibility precapture_cursor_visibility_ =
-        rex::ui::Window::CursorVisibility::kVisible;
+    bool abandoned_ = false;
+    // Set by the UI-thread engage task, read by the UI-thread release task:
+    // whether there is anything to undo on the window.
+    bool captured_ = false;
+    rex::ui::Window::CursorVisibility saved_cursor_ = rex::ui::Window::CursorVisibility::kVisible;
+    Clock::time_point handoff_since_{};
+    Clock::time_point last_consume_{};
 
-    std::mutex motion_mutex_;
-    float pending_dx_ = 0.0f;
-    float pending_dy_ = 0.0f;
+    double pending_dx_ = 0.0;
+    double pending_dy_ = 0.0;
+    double carry_yaw_ = 0.0;
+    double carry_pitch_ = 0.0;
 
-    MouseAimLedger ledger_;
-    float idle_seconds_ = 0.0f;
-    std::chrono::steady_clock::time_point last_resolve_call_{};
+    std::thread watchdog_;
+    std::condition_variable watchdog_cv_;
+    bool watchdog_stop_ = false;
   };
 
 } // namespace ao2::mouse
-
-// --- Worked example (nothing below this point is compiled) ---
-//
-// Once a camera-update routine is identified for this title (typically a
-// function that runs once per frame per camera and carries yaw/pitch as
-// fields on some "r3"/"r31"-style object pointer), wire it up along these
-// lines from game_patches.cpp or a dedicated hook file:
-//
-//   void CameraUpdateHook(PPCRegister& r31) {
-//     auto* memory = REX_KERNEL_MEMORY();
-//     uint8_t* yaw_ptr = memory->TranslateVirtual<uint8_t*>(r31.u32 + kYawOffset);
-//     uint8_t* pitch_ptr = memory->TranslateVirtual<uint8_t*>(r31.u32 + kPitchOffset);
-//     float yaw = rex::memory::load_and_swap<float>(yaw_ptr);
-//     float pitch = rex::memory::load_and_swap<float>(pitch_ptr);
-//     if (auto angles = ao2::mouse::MouseLook::Get().Resolve(yaw, pitch, FrameDeltaSeconds())) {
-//       rex::memory::store_and_swap<float>(yaw_ptr, angles->yaw);
-//       rex::memory::store_and_swap<float>(pitch_ptr, angles->pitch);
-//     }
-//   }
-//
-// kYawOffset/kPitchOffset and the hook point itself are game-specific and
-// need to be found with a disassembler; nothing in this file guesses them.

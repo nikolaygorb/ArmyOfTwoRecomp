@@ -11,6 +11,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Fix git symlinks on Windows (libmspack in SDK uses symlinks)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/fix_symlinks.cmake)
 
+# Apply local patches (thirdparty/patches) to the SDK submodule, idempotently.
+# The submodule itself is never edited or committed.
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply_sdk_patches.cmake)
+
 # temporary disabled
 #include(cmake/build_optimizations.cmake)
 
@@ -35,6 +39,7 @@ set(ARMYOFTWORECOMP_SOURCES
     src/game_patches.cpp
     src/game_cvars.cpp
     src/mouse/mouse_look.cpp
+    src/mouse/ao2_camera_hook.cpp
 )
 
 if(WIN32)
