@@ -1,37 +1,3 @@
-// mouse_look.h - raw mouse motion for a direct camera hook, bypassing the
-// emulated right stick.
-//
-// The keyboard/mouse-to-pad driver (thirdparty/rexglue-sdk's mnk driver)
-// turns mouse motion into right-stick deflection. That deflection then goes
-// through everything the title applies to a real thumbstick (deadzone, response
-// curve, acceleration ramp, low-pass filter), so the mouse never feels like a
-// mouse. This module is the alternative: it collects raw mouse deltas, scales
-// them to an angle and hands whole angular units to a hook sitting in the
-// title's own view-rotation code (see ao2_camera_hook.cpp), which adds them to
-// the camera directly.
-//
-// Self-contained on purpose, so the whole src/mouse/ folder can be copied into
-// another ReXGlue-based project: this file only talks to rex::ui::Window,
-// rex::cvar and the mnk driver's SetMouseLookActive(); it knows nothing about
-// the guest's memory layout. Per-project wiring:
-//   1. MouseLook::Get().Attach(window(), drawer) once the window exists
-//      (ArmyoftworecompApp::OnCreateDialogs);
-//   2. a camera hook that calls Consume() every frame (ao2_camera_hook.cpp).
-//
-// Ownership of the pointer. The mnk driver normally owns the pointer capture
-// and the mouse -> stick mapping. While a hook is calling Consume() this
-// module takes both over, in a fixed order so the two never fight:
-//   claim    SetMouseLookActive(false): mnk stops emitting stick motion and
-//            releases its capture on its next poll;
-//   engage   once mnk has let go, this module hides + locks the pointer and
-//            starts collecting deltas;
-//   release  when Consume() stops being called (menu, cutscene, vehicle - any
-//            state the hook point doesn't run in), on focus loss, when an
-//            overlay wants the mouse, or after Abandon(): the pointer is given
-//            back and SetMouseLookActive(true) hands the mouse to the stick
-//            mapping again.
-// So wherever the hook doesn't run, the mouse keeps working exactly as it did
-// before this module existed.
 #pragma once
 
 #include <rex/ui/window.h>
@@ -78,18 +44,10 @@ namespace ao2::mouse
     // to do.
     bool Enabled() const;
 
-    // Call every frame from the camera hook. units_per_radian converts to the
-    // title's angle unit (65536 / 2pi for Unreal rotators); extra_scale
-    // multiplies the sensitivity (zoom compensation). Returns the turn to add
-    // to the camera this frame, or nullopt when the mouse is not (yet) owned
-    // by direct look - add nothing and let the title run unmodified. The
-    // sub-unit remainder of each frame is carried into the next, so slow
-    // motion is never rounded away.
+
     std::optional<TurnDelta> Consume(double units_per_radian, double extra_scale = 1.0);
 
-    // The hook concluded that adding to the camera does not work in this
-    // build. Releases the mouse back to the stick mapping for the rest of the
-    // session.
+
     void Abandon(const char *reason);
 
     // rex::ui::WindowInputListener
@@ -116,10 +74,6 @@ namespace ao2::mouse
     using Clock = std::chrono::steady_clock;
     using UiTask = std::function<void()>;
 
-    // These expect mu_ held. They only change the phase and return the work
-    // for the UI thread (empty when there is none); the caller posts it with
-    // Post() after dropping the lock, because queueing may block and the UI
-    // thread needs mu_ to deliver mouse motion.
     UiTask BeginReleaseLocked();
     UiTask BeginEngageLocked();
     TurnDelta TakeTurnLocked(double units_per_radian, double extra_scale);
@@ -138,8 +92,7 @@ namespace ao2::mouse
     Phase phase_ = Phase::kIdle;
     bool has_focus_ = true;
     bool abandoned_ = false;
-    // Set by the UI-thread engage task, read by the UI-thread release task:
-    // whether there is anything to undo on the window.
+    // Set by the UI-thread engage task
     bool captured_ = false;
     rex::ui::Window::CursorVisibility saved_cursor_ = rex::ui::Window::CursorVisibility::kVisible;
     Clock::time_point handoff_since_{};

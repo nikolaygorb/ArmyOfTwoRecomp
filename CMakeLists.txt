@@ -3,16 +3,15 @@
 # SDK boilerplate lives in generated/rexglue.cmake.
 
 cmake_minimum_required(VERSION 3.25)
-project(armyoftworecomp LANGUAGES CXX)
+project(armyoftworecomp LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Fix git symlinks on Windows (libmspack in SDK uses symlinks)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/fix_symlinks.cmake)
 
-# Apply local patches (thirdparty/patches) to the SDK submodule, idempotently.
-# The submodule itself is never edited or committed.
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply_sdk_patches.cmake)
 
 # temporary disabled
@@ -23,14 +22,9 @@ set(REXSDK_DIR "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/rexglue-sdk" CACHE PATH "
 
 # Enable both graphics backends
 if(WIN32)
-    set(REXGLUE_USE_D3D12 ON CACHE BOOL "Enable D3D12 graphics backend" FORCE)
+    set(REXGLUE_USE_D3D12 ON CACHE BOOL "Enable D3D12 graphics backend")
 endif()
-set(REXGLUE_USE_VULKAN ON CACHE BOOL "Enable Vulkan graphics backend" FORCE)
-
-# Enable SSSE3 support (required by ReXGlue SDK)
-if(WIN32)
-    add_compile_options(-mssse3)
-endif()
+set(REXGLUE_USE_VULKAN ON CACHE BOOL "Enable Vulkan graphics backend")
 
 include(generated/rexglue.cmake)
 
@@ -40,6 +34,7 @@ set(ARMYOFTWORECOMP_SOURCES
     src/game_cvars.cpp
     src/mouse/mouse_look.cpp
     src/mouse/ao2_camera_hook.cpp
+    src/render/gpu_wait_hook.cpp
 )
 
 if(WIN32)

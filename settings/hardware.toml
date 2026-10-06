@@ -62,13 +62,10 @@ headless = false
 log_level = "critical"
 
 gpu_allow_invalid_fetch_constants = true
-postprocess_ffx_cas_additional_sharpness = 1
-postprocess_ffx_fsr_max_upsampling_passes = 1
 use_dedicated_xma_thread = false
 xma_decoder = "new"
 mount_cache = true
 framerate_limit = 0
-d3d12_readback_resolve = true
 readback_resolve  = "fast"
 
 # Perf CSV log path (per-frame metrics). Empty = disabled.
@@ -88,3 +85,6 @@ ao2_fps_unlock_mode = 1
 # "Black Shading Fix": disables MSAA.
 ao2_disable_msaa = true
 ao2_anisotropic_16x = false
+
+# 0 = busy spin (original), 1 = yield the core
+ao2_gpu_wait_mode = 1

@@ -1,41 +1,3 @@
-// ao2_camera_hook.cpp - direct mouse look for Army of Two (Xbox 360, retail 4541084C).
-//
-// The game is Unreal Engine 3 (AO2Game). Stick input reaches the camera through
-// the game's own aiming model (AO2AimingInputModel: deadzone, exponential
-// response, acceleration ramp, low-pass filter - see the AIMS_* tables in
-// assets/AO2Game/Config/Xenon/Cooked/coalesced.ini), so a mouse emulated as a
-// stick inherits all of that. This hook skips it: it sits on the view-rotation
-// limiter the player controller runs every frame and adds the raw mouse turn to
-// the rotation that comes out of it.
-//
-// Hook point: AAO2CharacterNative::LimitViewRotation, the UnrealScript native
-// "rotator LimitViewRotation(rotator ViewRotation)" (exec wrapper
-// sub_822DEAF0, registered under both AAO2CharacterNative and APawn). It is the
-// pawn's clamp of the controller's view rotation (pitch range, cover arcs...)
-// and the script feeds its result back as the new view rotation. Adding the
-// mouse after the original ran and then running the same limiter once more
-// (through the pawn's own vtable entry, exactly as the wrapper does) means the
-// mouse obeys every constraint the stick does.
-//
-// Guest layout this relies on, all read off the recompiled exec wrappers:
-//   exec wrapper            r3 = pawn (script Context), r4 = script frame,
-//                           r5 = address of the rotator result (3 x be32:
-//                           Pitch, Yaw, Roll; 65536 units per turn)
-//   pawn vtable   +876      AController* GetController()
-//   pawn vtable   +880      rotator LimitViewRotation(rotator): r3 = hidden
-//                           result pointer, r4 = this, r5 = Pitch:Yaw packed in
-//                           the high:low words, r6 = Roll in the high word;
-//                           returns r3 = pointer to the result
-//   controller vtable +816  bool IsLocalPlayerController()
-//   pawn +1736              camera manager; its vtable +268 returns the camera
-//                           actor; camera actor +456 aspect, +460 horizontal
-//                           FOV in degrees (see sub_8232E160 GetVerticalFOVAngle)
-//
-// If the hook point turns out not to drive the camera (the result being
-// discarded, say), the feedback check below notices that the game keeps undoing
-// the mouse and calls MouseLook::Abandon(): the mouse then goes back to the
-// emulated stick instead of staying dead.
-
 #include <algorithm>
 #include <bit>
 #include <chrono>
@@ -195,13 +157,6 @@ namespace
     return std::clamp(scale, 0.05, 1.0);
   }
 
-  // Does the game keep what the hook writes? If the camera were rebuilt from
-  // something else each frame, the next frame's rotation would come back with
-  // the previous mouse turn taken out again: the difference between "what
-  // came in now" and "what was written last time" would track -(last turn).
-  // Stick input and the game's own camera motion are unrelated to it, so over
-  // enough mouse motion the correlation is ~0 when the write sticks and ~-1
-  // when it is discarded.
   class PersistenceCheck
   {
   public:
@@ -320,9 +275,6 @@ namespace
       return;
     }
 
-    // Add the mouse, then run the pawn's own limiter over the sum, the same
-    // way the exec wrapper does it (hidden result pointer in r3, this in r4,
-    // rotator in r5/r6).
     const Rotator wanted{in.pitch + turn->pitch, in.yaw + turn->yaw, in.roll};
     Rotator out = wanted;
     const uint32_t scratch = ctx.r1.u32 + 0x60;
@@ -359,8 +311,7 @@ namespace
   }
 } // namespace
 
-// AAO2CharacterNative::execLimitViewRotation. Overrides the weak recompiled
-// symbol; __imp__sub_822DEAF0 is the untouched original.
+// AAO2CharacterNative::execLimitViewRotation
 extern "C" REX_FUNC(sub_822DEAF0)
 {
   const uint32_t pawn = ctx.r3.u32;
