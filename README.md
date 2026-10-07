@@ -6,8 +6,8 @@
      align="right"
      style="margin-left: 24px;">
 
-A static recompilation of [**Army of Two**](https://en.wikipedia.org/wiki/Army_of_Two) (2006, Volition Games, Xbox 360;
-Title ID `4541084C`, retail hash `AA1EA03FEC9A549C`) to native Windows x86-64,
+A static recompilation of [**Army of Two**](https://en.wikipedia.org/wiki/Army_of_Two) (2008, EA Montreal / Electronic Arts, Xbox 360;
+Title ID `4541084C`, retail hash `AA1EA03FEC9A549C`) to native x86-64 (Windows / Linux),
 built on the [ReXGlue SDK](https://github.com/rexglue/rexglue-sdk).
 
 Static recompilation translates the Xbox 360 PowerPC code inside the game's
@@ -22,9 +22,21 @@ threading go through the ReXGlue runtime.
 Everything works smoothly - codegen runs clean, the build compiles, and the
 executable boots to real GPU rendering.
 
+Project-side additions on top of the plain recompilation:
+
+- **Direct mouse look** ([`src/mouse/`](src/mouse/)) - raw 1:1 mouse input
+  fed straight into the game camera on foot, with FOV-aware zoom scaling;
+  stick emulation stays in charge elsewhere. See `ao2_mouse_*` in
+  [`settings/README.md`](settings/README.md#mappingtoml-reference).
+- **GPU wait hook** ([`src/render/gpu_wait_hook.cpp`](src/render/gpu_wait_hook.cpp)) -
+  the render thread yields instead of busy-spinning while it waits for
+  command-buffer space (`ao2_gpu_wait_mode`).
+- Ported xenia-canary game patches (FPS unlock, MSAA fix, 16x AF).
+
 ## Requirements
 
 - CMake 3.25+
+- Git (SDK submodule + patches)
 - Ninja
 - Clang / LLVM
 - [ABGX360](https://github.com/BakasuraRCE/abgx360) to dump the Xbox 360 disc,
@@ -32,18 +44,23 @@ executable boots to real GPU rendering.
   unpack an existing ISO
 - Your own legally-owned copy of Army of Two, extracted from the Xbox 360 disc/ISO
 
-The ReXGlue SDK release archive is auto-downloaded by the CMake configure
-step - see [Getting the SDK](#getting-the-sdk).
+The ReXGlue SDK is a git submodule - see [Getting the SDK](#getting-the-sdk).
 
 ## Getting the SDK
 
-The ReXGlue SDK version is pinned in [`CMakeLists.txt`](CMakeLists.txt)
-(`REXSDK_VERSION "0.10.0.8-dev.g1406e1b"`). The CMake configure step
-auto-downloads the matching nightly release archive for your platform
-(Windows / Linux / macOS) into `rexglue/<platform>/` via
-[`cmake/fetch-rexglue-sdk.cmake`](cmake/fetch-rexglue-sdk.cmake) - no manual
-download needed. The SDK itself is gitignored; only
-[`rexglue/README.md`](rexglue/README.md) is checked in.
+The ReXGlue SDK is pinned as a git submodule in `thirdparty/rexglue-sdk` and
+built together with the game:
+
+```bash
+git clone --recursive <this repo>
+# or, in an existing clone:
+git submodule update --init --recursive
+```
+
+Local SDK fixes live in [`thirdparty/patches/`](thirdparty/patches/) and are
+applied to the submodule at configure time by
+[`cmake/apply_sdk_patches.cmake`](cmake/apply_sdk_patches.cmake)
+(idempotent; the submodule itself is never edited).
 
 ## Getting the game data
 
@@ -90,8 +107,8 @@ Other presets (`*-debug`, `*-relwithdebinfo`, `*-arm64`) are listed in
 Codegen (translating `assets/default.xex` into `generated/default/*.cpp`) runs
 automatically as a build step (`armyoftworecomp_codegen` CMake target)
 whenever `armyoftworecomp_manifest.toml` or an included `.toml`
-changes. It can also be run directly: `rexglue\win-amd64\bin\rexglue.exe
-codegen`.
+changes. It can also be built on its own:
+`cmake --build --preset win-amd64-release --target armyoftworecomp_codegen`.
 
 ## Run
 
@@ -127,6 +144,8 @@ Useful extra flags/env vars while developing:
 | `--ao2_fps_unlock_mode=0\|1\|2` | Frame-rate target when `ao2_fps_unlock` is on: `0`=unlimited, `1`=60 FPS, `2`=30 FPS. Default `1`. |
 | `--ao2_disable_msaa=true` | Ported xenia-canary `game-patches` "Black Shading Fix" (disables MSAA). Enabled by default in [`settings/hardware.toml`](settings/hardware.toml). |
 | `--ao2_anisotropic_16x=true` | Ported xenia-canary `game-patches` "16x Anisotropic Filtering". Off by default. |
+| `--ao2_gpu_wait_mode=0\|1\|2` | Render-thread wait for command-buffer space: `0`=busy spin (original), `1`=yield (default), `2`=sleep 200us. |
+| `--ao2_mouse_direct_look=true` | Direct mouse look on foot. Enabled in [`settings/mapping.toml`](settings/mapping.toml). |
 
 Logs are written to `out\build\<preset>\logs\*.log` (the exe is built `WIN32`,
 so nothing prints to the console).
@@ -138,6 +157,20 @@ Rendering/window/vsync and input-backend defaults are checked in under
 automatically at startup. CLI flags and `REX_*` environment variables always
 override them - see [`settings/README.md`](settings/README.md) for the full
 reference and precedence rules.
+
+> This is an unofficial, non-commercial fan project. It is not affiliated
+> with, endorsed, sponsored or approved by Electronic Arts Inc., EA Montreal
+> or Microsoft Corporation. *Army of Two* is a trademark of Electronic Arts
+> Inc.; Xbox and Xbox 360 are trademarks of Microsoft Corporation. All
+> trademarks belong to their respective owners.
+>
+> This repository contains no game files, code or data from the game and
+> does not distribute any. To use it you need your own legally owned copy of
+> the game. Do not request or share game files in this project. The cover
+> image is the property of Electronic Arts Inc. and is used for
+> identification purposes only.
+
+> [IMPORTANT] This is DEMO of [rexglue-sdk](https://github.com/rexglue/rexglue-sdk) usage. It is a fan home-made research project.
 
 ## Credits
 

@@ -1,7 +1,7 @@
 # ArmyOfTwoRecomp - input mapping settings
 #
 # Loaded automatically at startup in addition to hardware.toml (see
-# OnConfigurePaths in src/armyoftworecomp_app.h.h). --flag on the command line and
+# OnConfigurePaths in src/armyoftworecomp_app.h). --flag on the command line and
 # REX_* environment variables always override values from this file.
 #
 # Gamepad button layouts (DualShock 4 / DualSense / Xbox / Switch Pro, etc.)

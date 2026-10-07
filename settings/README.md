@@ -97,8 +97,8 @@ also plugged in.
 Per-action keybinds (`keybind_a`, `keybind_lstick_up`, ...) already ship with
 sensible WASD-style defaults and aren't repeated in `mapping.toml` -
 add any of them the same way as everything else here if you want to rebind
-one. The full list isn't in the headers vendored under `rexglue/win-amd64`
-(source-only, defined in the SDK's `mnk_input_driver.cpp`) - the easiest way
+one. The full list isn't in the SDK headers (source-only, defined in
+`thirdparty/rexglue-sdk/src/input/mnk/mnk_input_driver.cpp`) - the easiest way
 to see every current default is `rex::cvar::SerializeToTOML()`'s dump, or the
 in-game Settings overlay's control rebinding screen.
 
@@ -112,16 +112,20 @@ build actually ships with), not the SDK's compiled-in default.
 | `gpu_plugin` | string | `"xenos"` | GPU emulation plugin to load. Set here rather than on the command line now - see root [README](../README.md#run). A `--gpu_plugin` flag would still override this file if you ever needed a different plugin. |
 | `graphics_backend` | string | `"any"` | Graphics API backend: `"any"` (D3D12 first when both are compiled in), `"d3d12"`, or `"vulkan"`. Project-defined cvar (not from the SDK), wired up in `OnPreSetup()` in [`src/armyoftworecomp_app.h`](../src/armyoftworecomp_app.h) - it loads the plugin itself with the requested backend before the SDK's own auto-load (which only ever requests `"any"`) runs. Falls back to automatic selection with a warning if the requested backend isn't compiled into `rexgpu-xenos`. |
 | `vsync` | bool | `false` | Vertical sync. |
-| `resolution_scale` | int | `2` | Internal render-target supersampling, independent of window/guest resolution. |
+| `resolution_scale` | int | `1` | Internal render-target supersampling, independent of window/guest resolution. |
 | `async_shader_compilation` | bool | `true` | Compile shaders on a background thread instead of blocking the render thread - reduces hitches when new shaders are first seen. |
-| `native_2x_msaa` | bool | `true` | Native 2x MSAA on the emulated render targets. |
-| `anisotropic_override` | int | `1` | Forces anisotropic texture filtering to this level (e.g. `16`); `0` leaves the game's own setting alone. |
+| `native_2x_msaa` | bool | `false` | Native 2x MSAA on the emulated render targets. |
+| `anisotropic_override` | int | `3` | Forces anisotropic texture filtering to this level (e.g. `16`); `0` leaves the game's own setting alone. |
 | `window_width` / `window_height` | int | `1920` / `1080` | Host window size. |
 | `fullscreen` | bool | `true` | Host window fullscreen. |
 | `monitor` | int | `0` | Host monitor index for fullscreen. |
 | `resolution` | string | `"1920x1080"` | Guest ("TV") video mode reported to the game - affects the game's own UI scale/aspect logic, separate from the host window size above. |
 | `present_letterbox` | bool | `true` | Letterbox instead of stretch when window and guest aspect ratios differ. |
 | `d3d12_debug` | bool | `false` | D3D12 debug layer. Leave off - noticeably slower. |
+| `ao2_fps_unlock` / `ao2_fps_unlock_mode` | bool / int | `true` / `1` | Ported "Unlock FPS" patch; mode `0`=unlimited, `1`=60, `2`=30. |
+| `ao2_disable_msaa` | bool | `true` | Ported "Black Shading Fix". |
+| `ao2_anisotropic_16x` | bool | `false` | Ported "16x Anisotropic Filtering". |
+| `ao2_gpu_wait_mode` | int | `1` | Render-thread wait for command-buffer space: `0`=busy spin (original), `1`=yield, `2`=sleep 200us. Hot-reloadable. |
 
 ## `mapping.toml` reference
 
@@ -133,6 +137,12 @@ build actually ships with), not the SDK's compiled-in default.
 | `mnk_mode` | bool | `true` | Enables keyboard-as-controller input, merged in alongside any physical gamepad (see below). |
 | `mnk_mouse` | bool | `true` | Routes mouse movement to the right stick when `mnk_mode` is on. Off means the right stick only comes from the `keybind_rstick_*` keys. |
 | `mnk_sensitivity` | double | `1.0` | Mouse sensitivity for the right stick, range `0.01`-`10.0`. |
+| `ao2_mouse_direct_look` | bool | `true` | Raw 1:1 mouse into the game camera while on foot; stick emulation (`mnk_mouse`) handles the rest, so keep that on. Falls back to the stick automatically if the hook isn't taking effect. |
+| `ao2_mouse_look_sensitivity` | double | `0.0022` | Camera radians per mouse pixel. |
+| `ao2_mouse_look_invert_x` / `_y` | bool | `false` | Invert look axes. |
+| `ao2_mouse_look_zoom_scaling` | bool | `true` | Scale sensitivity with camera FOV so zoomed aim turns the same screen distance per pixel. |
+| `ao2_mouse_look_zoom_ref_fov` | double | `0.0` | Horizontal FOV (degrees) at which sensitivity is unscaled; `0` = widest FOV seen. |
+| `ao2_mouse_look_log` | bool | `true` | Hook diagnostics (needs `log_level = "info"`). |
 
 Gamepad button layout itself (DualShock 4, DualSense, Xbox, Switch Pro, ...)
 isn't a setting here - SDL auto-detects the controller and maps it to the
@@ -141,7 +151,7 @@ Xbox 360 layout the game expects.
 ## Adding more cvars
 
 Any cvar declared with `REXCVAR_DECLARE` under
-`rexglue/win-amd64/include/rex/**/flags.h` can be added the same way: pick
+`thirdparty/rexglue-sdk/include/rex/**/flags.h` can be added the same way: pick
 the file matching its concern (hardware vs. input), add `key = value`. If it
 needs to apply before the window/overlays exist (true for everything
 currently listed), it belongs in one of these two files loaded from
@@ -149,10 +159,10 @@ currently listed), it belongs in one of these two files loaded from
 instead.
 
 `graphics_backend` isn't an SDK cvar - it's defined with
-`REXCVAR_DEFINE_STRING` directly in
-[`src/armyoftworecomp_app.h`](../src/armyoftworecomp_app.h),
+`REXCVAR_DEFINE_STRING` in
+[`src/game_cvars.cpp`](../src/game_cvars.cpp),
 registering at static-init time just like the SDK's own, so it loads fine on
 the first pass. This is the pattern to follow for any other
-project-specific toggle (e.g. a future ported gameplay patch): declare it next to `ArmyoftworecompApp`,
+project-specific toggle (all `ao2_*` cvars follow it): define it in the project sources,
 read it with `REXCVAR_GET(name)` wherever it's needed, and document it in
 this table.
