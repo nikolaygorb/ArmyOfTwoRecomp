@@ -4,4 +4,6 @@ assets/*
 generated/*
 !generated/rexglue.cmake
 out/*
+tools
+memory
 *.log

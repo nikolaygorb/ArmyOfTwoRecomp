@@ -13,11 +13,22 @@ gpu_plugin = "xenos"
 # "any" (d3d12 - win default, vulkan - lin default)
 # "d3d12" / "vulkan"
 graphics_backend = "any"
-vsync = false
+vsync = true
 resolution_scale = 1
+present_effect = "fsr"
+present_fsr_sharpness_reduction = 0.3
+present_dither = false
+swap_post_effect = "none"
 async_shader_compilation = true
 native_2x_msaa = false
 anisotropic_override = 3
+present_fsr_quality_mode = "auto"
+present_fsr_max_upsampling_passes = 1
+present_cas_additional_sharpness = 0.2
+xenos_sample_positions = false
+use_fuzzy_alpha_epsilon = false
+depth_bias_shader_offset = false
+force_depth_clamp = false
 
 texture_cache_memory_limit_soft = 1024
 texture_cache_memory_limit_hard = 4096

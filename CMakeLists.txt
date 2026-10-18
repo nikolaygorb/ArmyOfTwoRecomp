@@ -12,8 +12,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # Fix git symlinks on Windows (libmspack in SDK uses symlinks)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/fix_symlinks.cmake)
 
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/apply_sdk_patches.cmake)
-
 include(cmake/build_optimizations.cmake)
 
 # Build ReXGlue SDK from source (git submodule)
