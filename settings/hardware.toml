@@ -71,7 +71,7 @@ vulkan_pipeline_creation_threads = -1
 headless = false
 
 # trace, debug, info, warn, error, critical
-log_level = "info"
+log_level = "error"
 
 # Perf CSV log path (per-frame metrics). Empty = disabled.
 # Only works when REXGLUE_ENABLE_PERF_COUNTERS is defined (non-Release).
