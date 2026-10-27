@@ -5,7 +5,6 @@
 
 #include <chrono>
 #include <condition_variable>
-#include <cstdint>
 #include <functional>
 #include <mutex>
 #include <optional>
@@ -15,16 +14,16 @@ namespace rex::ui
 {
   class ImGuiDrawer;
   class WindowedAppContext;
-}
+} // namespace rex::ui
 
 namespace ao2::mouse
 {
 
-  // Whole angular units, in whatever unit the caller asked Consume() for.
-  struct TurnDelta
+  // Degrees, after ao2_mouse_sensitivity and the ao2_mouse_invert_* cvars.
+  struct Turn
   {
-    int32_t yaw;   // + = turn right
-    int32_t pitch; // + = look up
+    double yaw;   // + = turn right
+    double pitch; // + = mouse moved down (pointer y grows downward)
   };
 
   class MouseLook final : public rex::ui::WindowInputListener, public rex::ui::WindowListener
@@ -39,16 +38,14 @@ namespace ao2::mouse
     // given, the mouse is handed back while an overlay wants it.
     void Attach(rex::ui::Window *window, rex::ui::ImGuiDrawer *imgui = nullptr);
 
-    // True when ao2_mouse_direct_look is on and direct look has not been
-    // abandoned. Cheap; lets a hook skip its own work when there is nothing
-    // to do.
+    // ao2_mouse_look is on. Cheap; lets a hook skip its own work.
     bool Enabled() const;
 
-
-    std::optional<TurnDelta> Consume(double units_per_radian, double extra_scale = 1.0);
-
-
-    void Abandon(const char *reason);
+    // Called by a look hook once per look update (guest thread). Drives the
+    // hand-over from mnk and returns the mouse turn since the last call, or
+    // nullopt while the pointer is not ours yet. extra_scale multiplies the
+    // turn (zoom).
+    std::optional<Turn> Consume(double extra_scale);
 
     // rex::ui::WindowInputListener
     void OnMouseMove(rex::ui::MouseEvent &e) override;
@@ -76,7 +73,7 @@ namespace ao2::mouse
 
     UiTask BeginReleaseLocked();
     UiTask BeginEngageLocked();
-    TurnDelta TakeTurnLocked(double units_per_radian, double extra_scale);
+    Turn TakeTurnLocked(double extra_scale);
     bool OverlayWantsMouse() const;
 
     // Call without mu_ held.
@@ -91,7 +88,6 @@ namespace ao2::mouse
     mutable std::mutex mu_;
     Phase phase_ = Phase::kIdle;
     bool has_focus_ = true;
-    bool abandoned_ = false;
     // Set by the UI-thread engage task
     bool captured_ = false;
     rex::ui::Window::CursorVisibility saved_cursor_ = rex::ui::Window::CursorVisibility::kVisible;
@@ -100,8 +96,6 @@ namespace ao2::mouse
 
     double pending_dx_ = 0.0;
     double pending_dy_ = 0.0;
-    double carry_yaw_ = 0.0;
-    double carry_pitch_ = 0.0;
 
     std::thread watchdog_;
     std::condition_variable watchdog_cv_;

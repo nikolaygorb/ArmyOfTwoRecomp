@@ -14,14 +14,14 @@ gpu_plugin = "xenos"
 # "d3d12" / "vulkan"
 graphics_backend = "any"
 vsync = true
-resolution_scale = 1
+resolution_scale = 2
 present_effect = "fsr"
 present_fsr_sharpness_reduction = 0.3
-present_dither = false
-swap_post_effect = "none"
+present_dither = true
+swap_post_effect = "smaa"
 async_shader_compilation = true
 native_2x_msaa = false
-anisotropic_override = 3
+anisotropic_override = 5
 present_fsr_quality_mode = "auto"
 present_fsr_max_upsampling_passes = 1
 present_cas_additional_sharpness = 0.2
@@ -35,17 +35,19 @@ texture_cache_memory_limit_hard = 4096
 clear_memory_page_state = true
 readback_memexport = true
 readback_memexport_fast = true
+readback_resolve = "fast"
 host_present_from_non_ui_thread	= true
+gpu_allow_invalid_fetch_constants = true
+render_target_path_d3d12 = "rtv"
+render_target_path_vulkan = "fbo"
+store_shaders = true
+present_letterbox = true
 
 window_width = 1920
 window_height = 1080
 fullscreen = true
 monitor = 0
 resolution = "1920x1080"
-
-render_target_path_d3d12 = "rtv"
-store_shaders = true
-present_letterbox = true
   
 d3d12_adapter = -1
 d3d12_allow_variable_refresh_rate_and_tearing = true
@@ -60,7 +62,6 @@ d3d12_queue_priority = 2
 d3d12_submit_on_primary_buffer_end = true
 d3d12_tessellation_wireframe = false
 
-render_target_path_vulkan = "fbo"
 vulkan_log_debug_messages = false
 vulkan_allow_present_mode_immediate = true
 vulkan_allow_present_mode_fifo_relaxed = true
@@ -69,15 +70,8 @@ vulkan_pipeline_creation_threads = -1
 
 headless = false
 
-# trace, debug, info, warn, error
-log_level = "critical"
-
-gpu_allow_invalid_fetch_constants = true
-use_dedicated_xma_thread = false
-xma_decoder = "new"
-mount_cache = true
-framerate_limit = 0
-readback_resolve  = "fast"
+# trace, debug, info, warn, error, critical
+log_level = "info"
 
 # Perf CSV log path (per-frame metrics). Empty = disabled.
 # Only works when REXGLUE_ENABLE_PERF_COUNTERS is defined (non-Release).
@@ -108,3 +102,7 @@ ao2_gpu_wait_mode = 1
 # anything else falls back to English. Restart after changing it.
 ##
 user_language = 1
+
+# Split-screen: local players and their controllers (see split-screen.md).
+max_local_users = 2
+#keyboard_own_player = true

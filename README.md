@@ -22,11 +22,15 @@ threading go through the ReXGlue runtime.
 Everything works smoothly - codegen runs clean, the build compiles, and the
 executable boots to real GPU rendering.
 
+> Modern TU-version with multiplayer and GPU-native render for Windows is [ArmyOfTwoRecompilation](https://github.com/OpenPortroid/ArmyOfTwoRecompilation). 
+> My project won't be able to keep up with the development of the fork. If you need multiplayer, you're better off using [ArmyOfTwoRecompilation](https://github.com/OpenPortroid/ArmyOfTwoRecompilation) project instead.
+
 Project-side additions on top of the plain recompilation:
 
-- **Direct mouse look** ([`src/mouse/`](src/mouse/)) - raw 1:1 mouse input
-  fed straight into the game camera on foot, with FOV-aware zoom scaling;
-  stick emulation stays in charge elsewhere. See `ao2_mouse_*` in
+- **Native mouse look** ([`src/mouse/`](src/mouse/)) - raw 1:1 mouse input
+  fed straight into the game camera on foot (sensitivity on the Source-games
+  scale), with FOV-aware zoom scaling; LMB fires and RMB aims. Stick emulation
+  stays in charge elsewhere. See `ao2_mouse_*` in
   [`settings/README.md`](settings/README.md#mappingtoml-reference).
 - **GPU wait hook** ([`src/render/gpu_wait_hook.cpp`](src/render/gpu_wait_hook.cpp)) -
   the render thread yields instead of busy-spinning while it waits for
@@ -36,6 +40,13 @@ Project-side additions on top of the plain recompilation:
   set `user_language` in [`settings/hardware.toml`](settings/hardware.toml)
   (`1` English, `2` Japanese, `3` German, `4` French, `5` Spanish,
   `6` Italian) and restart. Anything else falls back to English.
+- **Split-screen / local co-op** - `max_local_users = 2` and
+  `keyboard_own_player = true` in [`settings/hardware.toml`](settings/hardware.toml)
+  sign in a second local player: keyboard + mouse is player 1, the first
+  gamepad is player 2 (or use two gamepads, or up to 4 players in automatic
+  mode). Each player keeps their own profile settings; saves are shared. See
+  [`settings/split-screen.md`](settings/split-screen.md) for device
+  assignment (`input_player1/2`) and troubleshooting.
 
 ## Requirements
 
@@ -149,7 +160,8 @@ Useful extra flags/env vars while developing:
 | `--ao2_disable_msaa=true` | Ported xenia-canary `game-patches` "Black Shading Fix" (disables MSAA). Enabled by default in [`settings/hardware.toml`](settings/hardware.toml). |
 | `--ao2_anisotropic_16x=true` | Ported xenia-canary `game-patches` "16x Anisotropic Filtering". Off by default. |
 | `--ao2_gpu_wait_mode=0\|1\|2` | Render-thread wait for command-buffer space: `0`=busy spin (original), `1`=yield (default), `2`=sleep 200us. |
-| `--ao2_mouse_direct_look=true` | Direct mouse look on foot. Enabled in [`settings/mapping.toml`](settings/mapping.toml). |
+| `--max_local_users=1\|2\|3\|4` | Number of local (split-screen) players that can sign in. Shipped as `2` in [`settings/hardware.toml`](settings/hardware.toml). See [`settings/split-screen.md`](settings/split-screen.md). |
+| `--keyboard_own_player=true\|false` | Keyboard + mouse as player 1 on their own, gamepads start at player 2. Shipped as `true`. |
 
 Logs are written to `out\build\<preset>\logs\*.log` (the exe is built `WIN32`,
 so nothing prints to the console).
@@ -160,7 +172,9 @@ Rendering/window/vsync and input-backend defaults are checked in under
 [`settings/`](settings/README.md) (`hardware.toml` / `mapping.toml`), loaded
 automatically at startup. CLI flags and `REX_*` environment variables always
 override them - see [`settings/README.md`](settings/README.md) for the full
-reference and precedence rules.
+reference and precedence rules. Local multiplayer (split-screen) players and
+their controllers are configured there too; see
+[`settings/split-screen.md`](settings/split-screen.md).
 
 > This is an unofficial, non-commercial fan project. It is not affiliated
 > with, endorsed, sponsored or approved by Electronic Arts Inc., EA Montreal

@@ -1,4 +1,4 @@
-// mouse_look.cpp
+// mouse_look.cpp - see mouse_look.h.
 #include "mouse_look.h"
 
 #include <imgui.h>
@@ -12,19 +12,21 @@
 #include <algorithm>
 #include <cmath>
 
-REXCVAR_DEFINE_BOOL(ao2_mouse_direct_look, false, "Mouse",
-                    "Feed raw mouse motion straight into the game's camera (1:1, no deadzone or "
-                    "acceleration) instead of emulating the right stick. Where the game's camera "
-                    "hook does not run (vehicles, menus) the stick emulation stays in charge")
+REXCVAR_DEFINE_BOOL(ao2_mouse_look, true, "Mouse",
+                    "Native mouse look: mouse motion turns the camera directly (1:1, no dead "
+                    "zone, response curve or acceleration) instead of emulating the right stick. "
+                    "Where the look hooks do not run (menus, driving a vehicle) the stick "
+                    "emulation stays in charge. Needs mnk_mode and mnk_mouse")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
-REXCVAR_DEFINE_DOUBLE(ao2_mouse_look_sensitivity, 0.0022, "Mouse",
-                      "Camera radians per pixel of mouse motion when ao2_mouse_direct_look is on "
-                      "(0.0022 = one full turn per ~2850 px)")
-    .range(0.0003, 0.02)
+REXCVAR_DEFINE_DOUBLE(ao2_mouse_sensitivity, 2.0, "Mouse",
+                      "Mouse look sensitivity: camera turn per mouse count = 0.022 deg x this "
+                      "(as in Source games)")
+    .range(0.01, 100.0)
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
-REXCVAR_DEFINE_BOOL(ao2_mouse_look_invert_x, false, "Mouse", "Invert the horizontal look axis")
+REXCVAR_DEFINE_BOOL(ao2_mouse_invert_x, false, "Mouse", "Invert the horizontal mouse look axis")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
-REXCVAR_DEFINE_BOOL(ao2_mouse_look_invert_y, false, "Mouse", "Invert the vertical look axis")
+REXCVAR_DEFINE_BOOL(ao2_mouse_invert_y, false, "Mouse",
+                    "Invert the vertical mouse look axis (on top of the in-game Invert Y option)")
     .lifecycle(rex::cvar::Lifecycle::kHotReload);
 
 namespace ao2::mouse
@@ -32,7 +34,7 @@ namespace ao2::mouse
 
   namespace
   {
-    // If Consume() stops being called (the hook point doesn't run in this game
+    // If Consume() stops being called (the look hooks don't run in this game
     // state: menu, cutscene, vehicle...) the pointer must not stay hidden and
     // locked with nothing consuming its motion.
     constexpr std::chrono::milliseconds kConsumerTimeout{300};
@@ -44,9 +46,11 @@ namespace ao2::mouse
     constexpr std::chrono::milliseconds kHandoffMin{50};
     constexpr std::chrono::milliseconds kHandoffMax{300};
 
+    constexpr double kDegreesPerCount = 0.022;
+
     // Guards against a stalled frame or a pointer teleport turning into one
     // huge snap: no single Consume() turns the camera by more than this.
-    constexpr double kMaxRadiansPerFrame = 1.5;
+    constexpr double kMaxDegreesPerCall = 90.0;
   } // namespace
 
   MouseLook &MouseLook::Get()
@@ -94,12 +98,7 @@ namespace ao2::mouse
 
   bool MouseLook::Enabled() const
   {
-    if (!REXCVAR_GET(ao2_mouse_direct_look))
-    {
-      return false;
-    }
-    std::lock_guard lock(mu_);
-    return !abandoned_;
+    return REXCVAR_GET(ao2_mouse_look);
   }
 
   void MouseLook::OnMouseMove(rex::ui::MouseEvent &e)
@@ -184,15 +183,14 @@ namespace ao2::mouse
       window->CaptureMouse();
       if (!window->SetRelativeMouseMode(true))
       {
-        REXLOG_WARN("ao2_mouse_direct_look: this window backend has no pointer lock, mouse "
-                    "motion is taken from raw pointer deltas without re-centering");
+        REXLOG_WARN("ao2_mouse_look: this window backend has no pointer lock, mouse motion is "
+                    "taken from raw pointer deltas without re-centering");
       }
 
       std::lock_guard lock(mu_);
       captured_ = true;
       saved_cursor_ = restore_to;
       pending_dx_ = pending_dy_ = 0.0;
-      carry_yaw_ = carry_pitch_ = 0.0;
       // A release posted meanwhile keeps its phase and undoes the capture.
       if (phase_ == Phase::kEngaging)
       {
@@ -229,7 +227,6 @@ namespace ao2::mouse
         std::lock_guard lock(mu_);
         captured_ = false;
         pending_dx_ = pending_dy_ = 0.0;
-        carry_yaw_ = carry_pitch_ = 0.0;
         phase_ = Phase::kIdle;
       }
       // Only now: mnk re-captures on its next poll, after the pointer is free.
@@ -283,35 +280,17 @@ namespace ao2::mouse
     }
   }
 
-  void MouseLook::Abandon(const char *reason)
+  std::optional<Turn> MouseLook::Consume(double extra_scale)
   {
     UiTask task;
-    {
-      std::lock_guard lock(mu_);
-      if (abandoned_)
-      {
-        return;
-      }
-      abandoned_ = true;
-      REXLOG_WARN("ao2_mouse_direct_look abandoned for this session: {}. The mouse falls back to "
-                  "the emulated right stick.",
-                  reason);
-      task = BeginReleaseLocked();
-    }
-    Post(std::move(task));
-  }
-
-  std::optional<TurnDelta> MouseLook::Consume(double units_per_radian, double extra_scale)
-  {
-    UiTask task;
-    std::optional<TurnDelta> result;
+    std::optional<Turn> result;
     {
       std::lock_guard lock(mu_);
       const auto now = Clock::now();
       last_consume_ = now;
 
-      const bool want = REXCVAR_GET(ao2_mouse_direct_look) && !abandoned_ && window_ &&
-                        has_focus_ && !OverlayWantsMouse();
+      const bool want =
+          REXCVAR_GET(ao2_mouse_look) && window_ && has_focus_ && !OverlayWantsMouse();
       if (!want)
       {
         task = BeginReleaseLocked();
@@ -345,7 +324,7 @@ namespace ao2::mouse
           break;
 
         case Phase::kEngaged:
-          result = TakeTurnLocked(units_per_radian, extra_scale);
+          result = TakeTurnLocked(extra_scale);
           break;
         }
       }
@@ -354,36 +333,25 @@ namespace ao2::mouse
     return result;
   }
 
-  TurnDelta MouseLook::TakeTurnLocked(double units_per_radian, double extra_scale)
+  Turn MouseLook::TakeTurnLocked(double extra_scale)
   {
     const double dx = pending_dx_;
     const double dy = pending_dy_;
     pending_dx_ = pending_dy_ = 0.0;
 
-    const double radians_per_pixel = REXCVAR_GET(ao2_mouse_look_sensitivity) * extra_scale;
-    const double x_sign = REXCVAR_GET(ao2_mouse_look_invert_x) ? -1.0 : 1.0;
-    // Pointer y grows downward, a positive pitch looks up.
-    const double y_sign = REXCVAR_GET(ao2_mouse_look_invert_y) ? 1.0 : -1.0;
+    const double degrees_per_count =
+        REXCVAR_GET(ao2_mouse_sensitivity) * kDegreesPerCount * extra_scale;
+    const double x_sign = REXCVAR_GET(ao2_mouse_invert_x) ? -1.0 : 1.0;
+    const double y_sign = REXCVAR_GET(ao2_mouse_invert_y) ? -1.0 : 1.0;
 
-    double yaw = dx * radians_per_pixel * x_sign;
-    double pitch = dy * radians_per_pixel * y_sign;
+    const double yaw = dx * degrees_per_count * x_sign;
+    const double pitch = dy * degrees_per_count * y_sign;
     if (!std::isfinite(yaw) || !std::isfinite(pitch))
     {
-      return TurnDelta{0, 0};
+      return Turn{0.0, 0.0};
     }
-    yaw = std::clamp(yaw, -kMaxRadiansPerFrame, kMaxRadiansPerFrame);
-    pitch = std::clamp(pitch, -kMaxRadiansPerFrame, kMaxRadiansPerFrame);
-
-    // Whole units go out, the fraction stays for the next frame. Truncating
-    // every frame instead loses sub-unit motion for good, which at low
-    // sensitivity and a high frame rate is most of it.
-    const double yaw_total = carry_yaw_ + yaw * units_per_radian;
-    const double pitch_total = carry_pitch_ + pitch * units_per_radian;
-    const double yaw_whole = std::trunc(yaw_total);
-    const double pitch_whole = std::trunc(pitch_total);
-    carry_yaw_ = yaw_total - yaw_whole;
-    carry_pitch_ = pitch_total - pitch_whole;
-    return TurnDelta{static_cast<int32_t>(yaw_whole), static_cast<int32_t>(pitch_whole)};
+    return Turn{std::clamp(yaw, -kMaxDegreesPerCall, kMaxDegreesPerCall),
+                std::clamp(pitch, -kMaxDegreesPerCall, kMaxDegreesPerCall)};
   }
 
 } // namespace ao2::mouse

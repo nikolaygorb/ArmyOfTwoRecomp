@@ -101,9 +101,9 @@ public:
 
   void OnCreateDialogs(rex::ui::ImGuiDrawer *drawer) override
   {
-    // Window exists from this point on. Direct mouse look (ao2_mouse_direct_look)
-    // only takes the mouse over while the camera hook in
-    // src/mouse/ao2_camera_hook.cpp is running; see src/mouse/mouse_look.h.
+    // Window exists from this point on. Native mouse look (ao2_mouse_look)
+    // only takes the mouse over while the look hooks in
+    // src/mouse/mouse_look_hook.cpp are running; see src/mouse/mouse_look.h.
     ao2::mouse::MouseLook::Get().Attach(window(), drawer);
   }
 

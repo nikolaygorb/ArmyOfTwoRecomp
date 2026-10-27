@@ -138,12 +138,11 @@ build actually ships with), not the SDK's compiled-in default.
 | `mnk_mode` | bool | `true` | Enables keyboard-as-controller input, merged in alongside any physical gamepad (see below). |
 | `mnk_mouse` | bool | `true` | Routes mouse movement to the right stick when `mnk_mode` is on. Off means the right stick only comes from the `keybind_rstick_*` keys. |
 | `mnk_sensitivity` | double | `1.0` | Mouse sensitivity for the right stick, range `0.01`-`10.0`. |
-| `ao2_mouse_direct_look` | bool | `true` | Raw 1:1 mouse into the game camera while on foot; stick emulation (`mnk_mouse`) handles the rest, so keep that on. Falls back to the stick automatically if the hook isn't taking effect. |
-| `ao2_mouse_look_sensitivity` | double | `0.0022` | Camera radians per mouse pixel. |
-| `ao2_mouse_look_invert_x` / `_y` | bool | `false` | Invert look axes. |
-| `ao2_mouse_look_zoom_scaling` | bool | `true` | Scale sensitivity with camera FOV so zoomed aim turns the same screen distance per pixel. |
-| `ao2_mouse_look_zoom_ref_fov` | double | `0.0` | Horizontal FOV (degrees) at which sensitivity is unscaled; `0` = widest FOV seen. |
-| `ao2_mouse_look_log` | bool | `true` | Hook diagnostics (needs `log_level = "info"`). |
+| `ao2_mouse_look` | bool | `true` | Raw 1:1 mouse into the game camera on foot and on turrets; stick emulation (`mnk_mouse`) handles the rest (driving, menus), so keep that on. |
+| `ao2_mouse_sensitivity` | double | `2.0` | Camera turn per mouse count = 0.022° × this (Source-games scale). |
+| `ao2_mouse_invert_x` / `_y` | bool | `false` | Invert mouse axes; `_y` is on top of the in-game Invert Y option. |
+| `ao2_mouse_zoom_scaling` | bool | `true` | Scale the turn with camera FOV (vs. 70°) so zoomed aim moves the picture the same amount per count. |
+| `ao2_mouse_zoom_sensitivity` | double | `1.0` | Extra factor while zoomed in. |
 
 Gamepad button layout itself (DualShock 4, DualSense, Xbox, Switch Pro, ...)
 isn't a setting here - SDL auto-detects the controller and maps it to the
