@@ -17,22 +17,8 @@ namespace GameConstants::PatchConstants
     std::uint32_t value;
   };
 
-  // Ported from xenia-canary game-patches for Army of Two retail (4541084C)
-  // NOPs the frame-limiter check; game speed is tied to FPS above ~90FPS.
-  constexpr Patch FpsUnlockNop()
-  {
-    return Patch{
-        0x8247D550,
-        0x60000000};
-  }
-
-  // Frame-rate target byte: 0x00=unlimited, 0x01=60FPS, 0x02=30FPS.
-  constexpr Patch FpsUnlockMode()
-  {
-    return Patch{
-        0x82A56447,
-        0x01};
-  }
+  // Ported from xenia-canary game-patches for Army of Two retail (4541084C).
+  // Only data patches: the code patches are mid-asm hooks (patches.toml).
 
   // "Black Shading Fix" - disables MSAA.
   constexpr Patch DisableMsaa()
@@ -40,12 +26,5 @@ namespace GameConstants::PatchConstants
     return Patch{
         0x830B6FE7,
         0x04};
-  }
-
-  constexpr Patch AnisotropicFiltering16x()
-  {
-    return Patch{
-        0x829D57D0,
-        0x38A00010};
   }
 }

@@ -1,5 +1,3 @@
-#include <algorithm>
-#include <array>
 #include <cstdint>
 #include <cstring>
 
@@ -80,41 +78,8 @@ namespace
         return true;
     }
 
-    std::array<uint8_t, 4> Be32Bytes(uint32_t value)
-    {
-        return {
-            static_cast<uint8_t>(value >> 24),
-            static_cast<uint8_t>(value >> 16),
-            static_cast<uint8_t>(value >> 8),
-            static_cast<uint8_t>(value)};
-    }
-
     // Ported from xenia-canary game-patches for Army of Two (4541084C)
     // https://github.com/xenia-canary/game-patches/blob/main/patches/4541084C%20-%20Army%20of%20Two%20(Europe).patch.toml
-    void ApplyFpsUnlockPatch()
-    {
-        if (!game_patches::IsEnabled(game_patches::PatchId::FpsUnlock))
-        {
-            return;
-        }
-
-        // NOP the frame-limiter check (be32).
-        {
-            const auto patch = GameConstants::PatchConstants::FpsUnlockNop();
-            const auto bytes = Be32Bytes(patch.value);
-            WriteGuestBytes(static_cast<uint32_t>(patch.address), bytes.data(),
-                            static_cast<uint32_t>(bytes.size()));
-        }
-
-        // Frame-rate target byte, configurable via ao2_fps_unlock_mode (clamped
-        // to the 0-2 range the game code understands).
-        {
-            const auto patch = GameConstants::PatchConstants::FpsUnlockMode();
-            int32_t mode = REXCVAR_GET(ao2_fps_unlock_mode);
-            uint8_t value = static_cast<uint8_t>(std::clamp(mode, 0, 2));
-            WriteGuestBytes(static_cast<uint32_t>(patch.address), &value, 1);
-        }
-    }
 
     // "Black Shading Fix" - disables MSAA.
     void ApplyDisableMsaaPatch()
@@ -128,27 +93,12 @@ namespace
         uint8_t value = static_cast<uint8_t>(patch.value);
         WriteGuestBytes(static_cast<uint32_t>(patch.address), &value, 1);
     }
-
-    void ApplyAnisotropicFiltering16xPatch()
-    {
-        if (!game_patches::IsEnabled(game_patches::PatchId::AnisotropicFiltering16x))
-        {
-            return;
-        }
-
-        const auto patch = GameConstants::PatchConstants::AnisotropicFiltering16x();
-        const auto bytes = Be32Bytes(patch.value);
-        WriteGuestBytes(static_cast<uint32_t>(patch.address), bytes.data(),
-                        static_cast<uint32_t>(bytes.size()));
-    }
 } // namespace
 
 namespace game_patches
 {
     void ApplyEnabledPatches()
     {
-        ApplyFpsUnlockPatch();
         ApplyDisableMsaaPatch();
-        ApplyAnisotropicFiltering16xPatch();
     }
 } // namespace game_patches

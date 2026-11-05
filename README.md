@@ -7,7 +7,8 @@
      style="margin-left: 24px;">
 
 A static recompilation of [**Army of Two**](https://en.wikipedia.org/wiki/Army_of_Two) (2008, EA Montreal / Electronic Arts, Xbox 360;
-Title ID `4541084C`, retail hash `AA1EA03FEC9A549C`) to native x86-64 (Windows / Linux),
+Title ID `4541084C`, retail hash `AA1EA03FEC9A549C`) to native x86-64 / ARM64
+(Windows / Linux / macOS),
 built on the [ReXGlue SDK](https://github.com/rexglue/rexglue-sdk).
 
 Static recompilation translates the Xbox 360 PowerPC code inside the game's
@@ -35,16 +36,27 @@ Project-side additions on top of the plain recompilation:
 - **GPU wait hook** ([`src/render/gpu_wait_hook.cpp`](src/render/gpu_wait_hook.cpp)) -
   the render thread yields instead of busy-spinning while it waits for
   command-buffer space (`ao2_gpu_wait_mode`).
-- Ported xenia-canary game patches (FPS unlock, MSAA fix, 16x AF).
+- **Native memory hooks** ([`src/render/native_memory_hook.cpp`](src/render/native_memory_hook.cpp)) -
+  the title's XDK `memcpy` / `memset` / `memmove` are replaced with native
+  host implementations (`REX_NATIVE_MEMORY_HOOKS`).
+- Ported xenia-canary game patches: FPS unlock and 16x AF are mid-asm hooks
+  declared in [`patches.toml`](patches.toml) and implemented in
+  [`src/game_hooks.cpp`](src/game_hooks.cpp), toggled live by their cvars;
+  the MSAA fix is a data patch in [`src/game_patches.cpp`](src/game_patches.cpp).
+- **Graphics backends** - D3D12 and Vulkan, plus an experimental D3D11
+  backend on Windows (`graphics_backend = "d3d11"`). Image quality options
+  (resolution scale, FSR/CAS/NIS, SMAA, ...) are described in
+  [`settings/faq.md`](settings/faq.md).
 - **Language selection** ([`src/language_hook.cpp`](src/language_hook.cpp)) -
   set `user_language` in [`settings/hardware.toml`](settings/hardware.toml)
   (`1` English, `2` Japanese, `3` German, `4` French, `5` Spanish,
   `6` Italian) and restart. Anything else falls back to English.
-- **Split-screen / local co-op** - `max_local_users = 2` and
-  `keyboard_own_player = true` in [`settings/hardware.toml`](settings/hardware.toml)
-  sign in a second local player: keyboard + mouse is player 1, the first
-  gamepad is player 2 (or use two gamepads, or up to 4 players in automatic
-  mode). Each player keeps their own profile settings; saves are shared. See
+- **Split-screen / local co-op** - `max_local_users = 2` in
+  [`settings/hardware.toml`](settings/hardware.toml) lets a second local
+  player sign in. By default gamepad 1 (together with keyboard + mouse) is
+  player 1 and gamepad 2 is player 2; uncomment `keyboard_own_player = true`
+  to play with one gamepad (keyboard + mouse is player 1, the first gamepad is
+  player 2). Up to 4 players in automatic mode. Each player keeps their own profile settings; saves are shared. See
   [`settings/split-screen.md`](settings/split-screen.md) for device
   assignment (`input_player1/2`) and troubleshooting.
 
@@ -72,10 +84,7 @@ git clone --recursive <this repo>
 git submodule update --init --recursive
 ```
 
-Local SDK fixes live in [`thirdparty/patches/`](thirdparty/patches/) and are
-applied to the submodule at configure time by
-[`cmake/apply_sdk_patches.cmake`](cmake/apply_sdk_patches.cmake)
-(idempotent; the submodule itself is never edited).
+The submodule is used as-is; no local patches are applied on top of it.
 
 ## Getting the game data
 
@@ -154,14 +163,14 @@ Useful extra flags/env vars while developing:
 |---|---|
 | `--game_data_root <path>` | Overrides the default `<repo_root>/assets` game-files location. |
 | `--gpu_plugin xenos` | Overrides `settings/hardware.toml`'s `gpu_plugin`. Only needed if you want a different plugin than the file specifies. |
-| `--graphics_backend d3d12\|vulkan\|any` | Forces the graphics API `rexgpu-xenos` uses (cvar, default `"any"`, which picks D3D12 first). See [`settings/README.md`](settings/README.md). |
-| `--ao2_fps_unlock=true` | Ported xenia-canary `game-patches` "Unlock FPS" patch for Army of Two retail. Enabled by default in [`settings/hardware.toml`](settings/hardware.toml). See [`settings/README.md`](settings/README.md). |
+| `--graphics_backend d3d11\|d3d12\|vulkan\|any` | Forces the graphics API `rexgpu-xenos` uses (cvar, default `"any"`, which picks D3D12 first on Windows). `d3d11` is experimental, Windows only. See [`settings/README.md`](settings/README.md) and [`settings/faq.md`](settings/faq.md). |
+| `--ao2_fps_unlock=true` | Ported xenia-canary `game-patches` "Unlock FPS" patch for Army of Two retail (mid-asm hooks, [`patches.toml`](patches.toml)). Enabled by default in [`settings/hardware.toml`](settings/hardware.toml). See [`settings/README.md`](settings/README.md). |
 | `--ao2_fps_unlock_mode=0\|1\|2` | Frame-rate target when `ao2_fps_unlock` is on: `0`=unlimited, `1`=60 FPS, `2`=30 FPS. Default `1`. |
 | `--ao2_disable_msaa=true` | Ported xenia-canary `game-patches` "Black Shading Fix" (disables MSAA). Enabled by default in [`settings/hardware.toml`](settings/hardware.toml). |
 | `--ao2_anisotropic_16x=true` | Ported xenia-canary `game-patches` "16x Anisotropic Filtering". Off by default. |
 | `--ao2_gpu_wait_mode=0\|1\|2` | Render-thread wait for command-buffer space: `0`=busy spin (original), `1`=yield (default), `2`=sleep 200us. |
 | `--max_local_users=1\|2\|3\|4` | Number of local (split-screen) players that can sign in. Shipped as `2` in [`settings/hardware.toml`](settings/hardware.toml). See [`settings/split-screen.md`](settings/split-screen.md). |
-| `--keyboard_own_player=true\|false` | Keyboard + mouse as player 1 on their own, gamepads start at player 2. Shipped as `true`. |
+| `--keyboard_own_player=true\|false` | Keyboard + mouse as player 1 on their own, gamepads start at player 2. Shipped commented out in [`settings/hardware.toml`](settings/hardware.toml), so the SDK default `false` applies. |
 
 Logs are written to `out\build\<preset>\logs\*.log` (the exe is built `WIN32`,
 so nothing prints to the console).
@@ -175,6 +184,16 @@ override them - see [`settings/README.md`](settings/README.md) for the full
 reference and precedence rules. Local multiplayer (split-screen) players and
 their controllers are configured there too; see
 [`settings/split-screen.md`](settings/split-screen.md).
+
+Reference pages copied from the SDK's `docs/` (keep them in sync when the
+submodule is bumped):
+
+| Page | SDK source |
+|---|---|
+| [`settings/faq.md`](settings/faq.md) - graphics options, backends, accuracy and debug settings | `docs/graphics-options.md` |
+| [`settings/split-screen.md`](settings/split-screen.md) - local players and device assignment | `docs/split-screen.md` |
+| [`settings/texture-replacement.md`](settings/texture-replacement.md) - HD texture packs | `docs/texture-replacement.md` |
+| [`settings/gpu-traces.md`](settings/gpu-traces.md) - recording and replaying GPU frame traces | `docs/gpu-traces.md` |
 
 > This is an unofficial, non-commercial fan project. It is not affiliated
 > with, endorsed, sponsored or approved by Electronic Arts Inc., EA Montreal

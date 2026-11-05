@@ -1,8 +1,8 @@
 #include "game_cvars.h"
 
 REXCVAR_DEFINE_STRING(graphics_backend, "any", "GPU",
-                      "Graphics API backend: any, d3d12, vulkan")
-    .allowed({"any", "d3d12", "vulkan"});
+                      "Graphics API backend: any, d3d11 (experimental), d3d12, vulkan")
+    .allowed({"any", "d3d11", "d3d12", "vulkan"});
 
 REXCVAR_DEFINE_BOOL(ao2_fps_unlock, false, "Gameplay",
                     "Unlock FPS. Game speed is tied to FPS, kicks in above ~90FPS");

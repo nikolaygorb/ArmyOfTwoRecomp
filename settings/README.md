@@ -2,13 +2,20 @@
 
 Two hand-authored, checked-in config files that the `armyoftworecomp`
 binary loads automatically at startup, plus a downloaded controller mapping
-database and this README.
+database, this README and reference pages copied from the SDK.
 
 | File | Covers |
 |---|---|
-| [`hardware.toml`](hardware.toml) | Renderer/backend, window, vsync, resolution, debug output, experimental gameplay patches |
-| [`mapping.toml`](mapping.toml) | Input backend selection (gamepad/keyboard+mouse) |
+| [`hardware.toml`](hardware.toml) | Renderer/backend, window, vsync, resolution, debug output, gameplay patches, language, split-screen |
+| [`mapping.toml`](mapping.toml) | Input backend selection (gamepad/keyboard+mouse), mouse look, keybinds |
 | [`gamecontrollerdb.txt`](gamecontrollerdb.txt) | SDL gamepad mappings for controllers it doesn't already recognize - not hand-authored, see below |
+| [`faq.md`](faq.md) | Every graphics option (upscaling, sharpening, backends incl. D3D11, accuracy, debugging) - copy of the SDK's `docs/graphics-options.md` |
+| [`split-screen.md`](split-screen.md) | Local players and device assignment - copy of the SDK's `docs/split-screen.md` |
+| [`texture-replacement.md`](texture-replacement.md) | HD texture packs - copy of the SDK's `docs/texture-replacement.md` |
+| [`gpu-traces.md`](gpu-traces.md) | GPU frame traces - copy of the SDK's `docs/gpu-traces.md` |
+
+The four `.md` pages are verbatim SDK docs; re-copy them from
+`thirdparty/rexglue-sdk/docs/` whenever the submodule is bumped.
 
 Split in two on purpose: rendering/perf tweaks and input tweaks are separate
 concerns you'll want to touch independently, and both stay tiny because
@@ -105,28 +112,34 @@ in-game Settings overlay's control rebinding screen.
 ## `hardware.toml` reference
 
 The "Default" column shows the value committed in `hardware.toml` (what the
-build actually ships with), not the SDK's compiled-in default.
+build actually ships with), not the SDK's compiled-in default. Only the keys
+this project cares about are listed; the rest of `hardware.toml`
+(`present_effect`, `swap_post_effect`, readback/texture-cache tuning,
+`d3d12_*` / `vulkan_*` / `d3d11_*` backend keys, ...) is SDK surface
+documented in [`faq.md`](faq.md).
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
 | `gpu_plugin` | string | `"xenos"` | GPU emulation plugin to load. Set here rather than on the command line now - see root [README](../README.md#run). A `--gpu_plugin` flag would still override this file if you ever needed a different plugin. |
-| `graphics_backend` | string | `"any"` | Graphics API backend: `"any"` (D3D12 first when both are compiled in), `"d3d12"`, or `"vulkan"`. Project-defined cvar (not from the SDK), wired up in `OnPreSetup()` in [`src/armyoftworecomp_app.h`](../src/armyoftworecomp_app.h) - it loads the plugin itself with the requested backend before the SDK's own auto-load (which only ever requests `"any"`) runs. Falls back to automatic selection with a warning if the requested backend isn't compiled into `rexgpu-xenos`. |
-| `vsync` | bool | `false` | Vertical sync. |
-| `resolution_scale` | int | `1` | Internal render-target supersampling, independent of window/guest resolution. |
+| `graphics_backend` | string | `"any"` | Graphics API backend: `"any"` (D3D12 first on Windows), `"d3d12"`, `"vulkan"`, or `"d3d11"` (experimental, Windows only - see [`faq.md`](faq.md#direct3d-11-experimental)). Project-defined cvar (not from the SDK), wired up in `OnPreSetup()` in [`src/armyoftworecomp_app.h`](../src/armyoftworecomp_app.h) - it loads the plugin itself with the requested backend before the SDK's own auto-load (which only ever requests `"any"`) runs. Falls back to automatic selection with a warning if the requested backend isn't compiled into `rexgpu-xenos`. |
+| `vsync` | bool | `true` | Vertical sync. |
+| `resolution_scale` | int | `2` | Internal render-target supersampling, independent of window/guest resolution. |
 | `async_shader_compilation` | bool | `true` | Compile shaders on a background thread instead of blocking the render thread - reduces hitches when new shaders are first seen. |
 | `native_2x_msaa` | bool | `false` | Native 2x MSAA on the emulated render targets. |
-| `anisotropic_override` | int | `3` | Forces anisotropic texture filtering to this level (e.g. `16`); `0` leaves the game's own setting alone. |
+| `anisotropic_override` | int | `5` | Forces anisotropic texture filtering to this level (e.g. `16`); `0` leaves the game's own setting alone. |
 | `window_width` / `window_height` | int | `1920` / `1080` | Host window size. |
 | `fullscreen` | bool | `true` | Host window fullscreen. |
 | `monitor` | int | `0` | Host monitor index for fullscreen. |
 | `resolution` | string | `"1920x1080"` | Guest ("TV") video mode reported to the game - affects the game's own UI scale/aspect logic, separate from the host window size above. |
 | `present_letterbox` | bool | `true` | Letterbox instead of stretch when window and guest aspect ratios differ. |
 | `d3d12_debug` | bool | `false` | D3D12 debug layer. Leave off - noticeably slower. |
-| `ao2_fps_unlock` / `ao2_fps_unlock_mode` | bool / int | `true` / `1` | Ported "Unlock FPS" patch; mode `0`=unlimited, `1`=60, `2`=30. |
+| `ao2_fps_unlock` / `ao2_fps_unlock_mode` | bool / int | `true` / `1` | Ported "Unlock FPS" patch (mid-asm hooks, see [`patches.toml`](../patches.toml)); mode `0`=unlimited, `1`=60, `2`=30. Game speed is tied to FPS above ~90. |
 | `ao2_disable_msaa` | bool | `true` | Ported "Black Shading Fix". |
-| `ao2_anisotropic_16x` | bool | `false` | Ported "16x Anisotropic Filtering". |
+| `ao2_anisotropic_16x` | bool | `false` | Ported "16x Anisotropic Filtering" (mid-asm hook, see [`patches.toml`](../patches.toml)). |
 | `ao2_gpu_wait_mode` | int | `1` | Render-thread wait for command-buffer space: `0`=busy spin (original), `1`=yield, `2`=sleep 200us. Hot-reloadable. |
 | `user_language` | int | `1` | Game language: `1` English, `2` Japanese, `3` German, `4` French, `5` Spanish, `6` Italian. SDK cvar; the game reads it through `ExGetXConfigSetting`, and [`src/language_hook.cpp`](../src/language_hook.cpp) forces anything not on the disc back to English. Restart after changing it. |
+| `max_local_users` | int | `2` | Local (split-screen) players that can sign in, 1-4. SDK cvar, see [`split-screen.md`](split-screen.md). |
+| `keyboard_own_player` | bool | commented out (`false`) | Keyboard + mouse as player 1 on their own, gamepads start at player 2 - uncomment for co-op with one gamepad. See [`split-screen.md`](split-screen.md). |
 
 ## `mapping.toml` reference
 

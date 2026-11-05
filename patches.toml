@@ -1,0 +1,20 @@
+# Ported from xenia-canary game-patches for Army of Two (4541084C)
+# https://github.com/xenia-canary/game-patches/blob/main/patches/4541084C%20-%20Army%20of%20Two%20(Europe).patch.toml
+
+[[midasm_hook]]
+address = 0x8247D550
+name = "Ao2FpsUnlockLimiterHook"
+registers = ["fpscr"]
+jump_address_on_true = 0x8247D554
+
+[[midasm_hook]]
+address = 0x82A56444
+name = "Ao2FpsUnlockIntervalHook"
+registers = ["r10"]
+jump_address_on_true = 0x82A56448
+
+[[midasm_hook]]
+address = 0x829D57D0
+name = "Ao2Anisotropic16xHook"
+registers = ["r5"]
+jump_address_on_true = 0x829D57D4
